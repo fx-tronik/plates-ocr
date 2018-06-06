@@ -1,17 +1,13 @@
 
 # coding: utf-8
-
-
-
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 import keras
 import tensorflow as tf
 print('TensorFlow version:', tf.__version__)
 print('Keras version:', keras.__version__)
 
-
-
-import os
 from os.path import join
 import json
 import random
@@ -32,7 +28,7 @@ from keras.layers import Reshape, Lambda
 from keras.layers.merge import add, concatenate
 from keras.models import Model, load_model
 from keras.layers.recurrent import GRU
-from keras.optimizers import SGD
+from keras.optimizers import SGD, Adam
 from keras.utils.data_utils import get_file
 from keras.preprocessing import image
 from keras.utils import multi_gpu_model
@@ -43,9 +39,6 @@ import cv2
 config = tf.ConfigProto(allow_soft_placement = True)
 sess = tf.Session(config = config)
 
-
-
-#sess = tf.Session()
 K.set_session(sess)
 
 from collections import Counter
@@ -61,9 +54,11 @@ def get_counter(dirpath):
     print('Max plate length in "%s":' % dirname, max(Counter(lens).keys()))
     return {'counter':Counter(letters), 'amount':max(Counter(lens).keys())}
 
-collection = get_counter('img/trainPL')
-letters_train = set(collection['counter'].keys())
-letters = sorted(list(letters_train))
+collection = get_counter('img/train')
+letters = sorted([' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V','W', 'X', 'Y', 'Z', '1', '2', '3',
+           '4', '5', '6', '7', '8', '9', '0'])
+#letters_train = set(collection['counter'].keys())
+#letters = sorted(list(letters_train))
 print('Letters:', ' '.join(letters))
 
 def labels_to_text(labels):
@@ -79,25 +74,25 @@ def is_valid_str(s):
     return True
 
 class TextImageGenerator:
-   
+
     def __init__(self, dirpath, img_w, img_h, batch_size, downsample_factor, max_text_len=8):
         self.img_h = img_h
         self.img_w = img_w
         self.batch_size = batch_size
         self.max_text_len = max_text_len
         self.downsample_factor = downsample_factor
-        
+
         self.samples = []
-        
+
         for filename in os.listdir(dirpath):
                 img_filepath = join(dirpath, filename)
                 filename = filename.split('.',1)[0]
                 self.samples.append([img_filepath, filename])
-        
+
         self.n = len(self.samples)
         self.indexes = list(range(self.n))
         self.current_index = 0
-        
+
     def build_data(self):
         self.imgs = np.zeros((self.n, self.img_h, self.img_w))
         self.texts = []
@@ -109,7 +104,7 @@ class TextImageGenerator:
             img /= 255
             self.imgs[i, :, :] = img
             self.texts.append(text)
-            
+
     def get_output_size(self):
         return len(letters) + 1
 
@@ -119,7 +114,7 @@ class TextImageGenerator:
             self.current_index = 0
             random.shuffle(self.indexes)
         return self.imgs[self.indexes[self.current_index]], self.texts[self.indexes[self.current_index]]
-        
+
     def next_batch(self):
         while True:
             # width and height are backwards from typical Keras convention
@@ -132,7 +127,7 @@ class TextImageGenerator:
             input_length = np.ones((self.batch_size, 1)) * (self.img_w // self.downsample_factor - 2)
             label_length = np.zeros((self.batch_size, 1))
             source_str = []
-                                   
+
             for i in range(self.batch_size):
                 img, text = self.next_sample()
                 img = img.T
@@ -144,8 +139,8 @@ class TextImageGenerator:
                 Y_data[i][:len(text_to_labels(text))] = text_to_labels(text)
                 source_str.append(text)
                 label_length[i] = len(text)
-                
-            inputs = {
+
+            self.inputs = {
                 'the_input': X_data,
                 'the_labels': Y_data,
                 'input_length': input_length,
@@ -153,7 +148,7 @@ class TextImageGenerator:
                 #'source_str': source_str
             }
             outputs = {'ctc': np.zeros([self.batch_size])}
-            yield (inputs, outputs)
+            yield (self.inputs, outputs)
 
 def ctc_lambda_func(args):
     y_pred, labels, input_length, label_length = args
@@ -161,12 +156,22 @@ def ctc_lambda_func(args):
     # tend to be garbage:
     y_pred = y_pred[:, 2:, :]
     return K.ctc_batch_cost(labels, y_pred, input_length, label_length)
-            
-#test = TextImageGenerator('img/train', 235, 50, 8, 4, collection['amount'])
+
+class WeightsSaver(keras.callbacks.Callback):
+    def __init__(self, model, N):
+        self.model = model
+        self.N = N
+        self.epoch = 0
+
+    def on_epoch_end(self, epoch, logs={}):
+        if self.epoch % self.N == 0:
+            name = './models/period_weights_{:03d}.hdf5'.format(self.epoch)
+            self.model.save_weights(name)
+        self.epoch += 1
 
 def train(img_w, load=False):
     # Input Parameters
-    img_h = 50
+    img_h = 60
 
     # Network parameters
     conv_filters = 16
@@ -179,12 +184,12 @@ def train(img_w, load=False):
         input_shape = (1, img_w, img_h)
     else:
         input_shape = (img_w, img_h, 1)
-        
-    batch_size = 32
+
+    batch_size = 25
     downsample_factor = pool_size ** 2
-    tiger_train = TextImageGenerator('img/trainPL', 235, 50, 8, 4, collection['amount'])
+    tiger_train = TextImageGenerator('img/train', 260, 60, batch_size, 4, collection['amount'])
     tiger_train.build_data()
-    tiger_val = TextImageGenerator('img/trainPL', 235, 50, 8, 4, collection['amount'])
+    tiger_val = TextImageGenerator('img/val', 260, 60, batch_size, 4, collection['amount'])
     tiger_val.build_data()
 
     act = 'relu'
@@ -226,84 +231,30 @@ def train(img_w, load=False):
     loss_out = Lambda(ctc_lambda_func, output_shape=(1,), name='ctc')([y_pred, labels, input_length, label_length])
 
     # clipnorm seems to speeds up convergence
-    sgd = SGD(lr=0.02, decay=1e-6, momentum=0.9, nesterov=True, clipnorm=5)
-
+    #sgd = SGD(lr=0.02, decay=1e-6, momentum=0.9, nesterov=True, clipnorm=5)
+    adam = Adam(lr=0.001)
     if load:
         model = load_model('./tmp_model.h5', compile=False)
     else:
         model = Model(inputs=[input_data, labels, input_length, label_length], outputs=loss_out)
         #model = multi_gpu_model(model, gpus=1)
     # the loss calc occurs elsewhere, so use a dummy lambda func for the loss
-        model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer=sgd)
-    
+        model.compile(loss={'ctc': lambda y_true, y_pred: y_pred}, optimizer=adam)
+    checkpointer = keras.callbacks.ModelCheckpoint(filepath='./models/weights_{epoch:02d}-{val_loss:.2f}.hdf5', verbose=1, save_best_only=True)
+    period_checkpointer = WeightsSaver(model, 3)
     if not load:
         # captures output of softmax so we can decode the output during visualization
         test_func = K.function([input_data], [y_pred])
 
-        model.fit_generator(generator=tiger_train.next_batch(), 
-                            steps_per_epoch=tiger_train.n,
-                            epochs=1, 
-                            validation_data=tiger_val.next_batch(), 
-                            validation_steps=tiger_val.n)
+        model.fit_generator(generator=tiger_train.next_batch(),
+                            steps_per_epoch=tiger_train.n/100,
+                            epochs=1000,
+                            validation_data=tiger_val.next_batch(),
+                            validation_steps=tiger_val.n,
+                            callbacks=[checkpointer, period_checkpointer])
 
     return model
 
-#model = load_model('my_model.h5', custom_objects={'<lambda>': lambda y_true, y_pred: y_pred})
+#model = load_model('model100epoch.h5', custom_objects={'<lambda>': lambda y_true, y_pred: y_pred})
 
-model = train(235, load=False)
-#model.save('my_modelDEPL.h5')
-#model = load_model('my_model.h5', custom_objects={'<lambda>': lambda y_true, y_pred: y_pred})
-
-def decode_batch(out):
-    ret = []
-    for j in range(out.shape[0]):
-        out_best = list(np.argmax(out[j, 2:], 1))
-        out_best = [k for k, g in itertools.groupby(out_best)]
-        outstr = ''
-        for c in out_best:
-            if c < len(letters):
-                outstr += letters[c]
-        ret.append(outstr)
-    return ret
-    
-tiger_test = TextImageGenerator('img/trainPL', 235, 50, 8, 4, collection['amount'])
-tiger_test.build_data()
-
-net_inp = model.get_layer(name='the_input').input
-net_out = model.get_layer(name='softmax').output
-
-for inp_value, _ in tiger_test.next_batch():
-    bs = inp_value['the_input'].shape[0]
-    X_data = inp_value['the_input']
-    net_out_value = sess.run(net_out, feed_dict={net_inp:X_data})
-    pred_texts = decode_batch(net_out_value)
-    labels = inp_value['the_labels']
-    texts = []
-    for label in labels:
-        text = ''.join(list(map(lambda x: letters[int(x)], label)))
-        texts.append(text)
-    
-    for i in range(bs):
-        fig = plt.figure(figsize=(10, 10))
-        outer = gridspec.GridSpec(2, 1, wspace=10, hspace=0.1)
-        ax1 = plt.Subplot(fig, outer[0])
-        fig.add_subplot(ax1)
-        ax2 = plt.Subplot(fig, outer[1])
-        fig.add_subplot(ax2)
-        print('Predicted: %s\nTrue: %s' % (pred_texts[i], texts[i]))
-        img = X_data[i][:, :, 0].T
-        ax1.set_title('Input img')
-        ax1.imshow(img, cmap='gray')
-        ax1.set_xticks([])
-        ax1.set_yticks([])
-        ax2.set_title('Activations')
-        ax2.imshow(net_out_value[i].T, cmap='binary', interpolation='nearest')
-        ax2.set_yticks(list(range(len(letters) + 1)))
-        ax2.set_yticklabels(letters + ['blank'])
-        ax2.grid(False)
-        for h in np.arange(-0.5, len(letters) + 1 + 0.5, 1):
-            ax2.axhline(h, linestyle='-', color='k', alpha=0.5, linewidth=1)
-        
-        #ax.axvline(x, linestyle='--', color='k')
-        plt.show()
-    break
+model = train(260, load=False)
