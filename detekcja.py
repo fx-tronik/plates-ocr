@@ -58,6 +58,14 @@ class predict:
         img = np.expand_dims(img.T, axis=2)
         self.X_data[0] = img
 
+    def image_matrix(self, img):
+        self.X_data = np.ones([1, 260, 60, 1])
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img = cv2.resize(self.img_pre, (260, 60))
+        img = (img.astype(np.float32) / 255)
+        img = np.expand_dims(img.T, axis=2)
+        self.X_data[0] = img
+
     def decode_batch(self, out):
         ret = []
         for j in range(out.shape[0]):
@@ -74,7 +82,8 @@ class predict:
 
         net_inp = self.model.get_layer(name='the_input').input
         net_out = self.model.get_layer(name='softmax').output
-        net_out_value = self.sess.run(net_out, feed_dict={net_inp: self.X_data})
+        net_out_value = self.sess.run(net_out,
+                                      feed_dict={net_inp: self.X_data})
         self.pred_texts = self.decode_batch(net_out_value)
 
     def calculate_distance(self, index):
@@ -84,7 +93,8 @@ class predict:
         print(self.pred_texts[index] + " :przewidywany wynik")
         print(self.filenames[index] + " :prawidlowy wynik")
 
-        distance = Levenshtein.distance(self.filenames[index], self.pred_texts[index])
+        distance = Levenshtein.distance(self.filenames[index],
+                                        self.pred_texts[index])
 
         if (distance != 0):
             self.incorrect += 1
@@ -102,7 +112,8 @@ class predict:
         print("----------------------------------")
         print("Razem probek: " + str(self.samples))
         print("Blednych probek: " + str(self.incorrect))
-        print("f score :" + str((self.samples-self.incorrect)/self.samples))
+        accuracy = (self.samples-self.incorrect)/self.samples
+        print("f score :" + str(accuracy))
 
     def display_results(self):
 
@@ -123,20 +134,25 @@ class predict:
 
     def return_raw(self):
         try:
-            return self.pred_texts
+            return self.pred_texts[0]
         except AttributeError:
             print('Najpierw przeprowadz detekcje')
+
+    def ocr(self, img):
+        self.image_matrix(img)
+        self.decode()
+        return self.return_raw()
 
 
 test = predict()
 
-dirpath = '/home/yason/ocr/img/val'
+# dirpath = '/home/yason/ocr/img/val'
 # dirpath = '/home/yason/tablice_kilka_nowych'
-# picpath = '/home/yason/tablice_kilka_nowych/DW 7N777.jpg'
+picpath = '/home/yason/tablice_kilka_nowych/DW 7N777.jpg'
 # test.single_picture(picpath)
-
-test.collect_data(dirpath)
-test.decode()
+# print(test.ocr(picpath))
+# test.collect_data(dirpath)
+# test.decode()
 # test.single_result()
-test.calculate_accuracy()
+# test.calculate_accuracy()
 # test.display_debug()
