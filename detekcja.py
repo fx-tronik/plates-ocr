@@ -71,15 +71,16 @@ class predict:
         return ret
 
     def decode(self):
+
         net_inp = self.model.get_layer(name='the_input').input
         net_out = self.model.get_layer(name='softmax').output
-
         net_out_value = self.sess.run(net_out, feed_dict={net_inp: self.X_data})
         self.pred_texts = self.decode_batch(net_out_value)
 
     def calculate_distance(self, index):
         self.pred_texts[index] = self.pred_texts[index].replace(" ", "")
         self.filenames[index] = self.filenames[index].replace(" ", "")
+        print("----------------------------------")
         print(self.pred_texts[index] + " :przewidywany wynik")
         print(self.filenames[index] + " :prawidlowy wynik")
 
@@ -91,13 +92,11 @@ class predict:
 
         print("Dystans: " + str(distance))
         print("Dotychczas zle: " + str(self.incorrect))
-    def display_results(self):
+
+    def calculate_accuracy(self):
 
         for index, prediction in enumerate(self.pred_texts):
             self.calculate_distance(index)
-            cv2.imshow('image', self.img_pre[index])
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
 
         self.samples = len(self.filenames)
         print("----------------------------------")
@@ -105,6 +104,13 @@ class predict:
         print("Blednych probek: " + str(self.incorrect))
         print("f score :" + str((self.samples-self.incorrect)/self.samples))
 
+    def display_results(self):
+
+        for index, prediction in enumerate(self.pred_texts):
+            self.calculate_distance(index)
+            cv2.imshow('image', self.img_pre[index])
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
 
     def single_result(self):
         try:
@@ -132,5 +138,5 @@ dirpath = '/home/yason/ocr/img/val'
 test.collect_data(dirpath)
 test.decode()
 # test.single_result()
-test.display_results()
+test.calculate_accuracy()
 # test.display_debug()
