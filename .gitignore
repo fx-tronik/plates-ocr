@@ -1,7 +1,6 @@
-img/val/*.jpg
-img/train/*.jpg
-img/trainREAL1/
+*.jpg
 __pycache__
-models/*.hdf5
+*.hdf5
+logs/*
 *.save*
 *.swp
