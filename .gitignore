@@ -4,3 +4,5 @@ __pycache__
 logs/*
 *.save*
 *.swp
+_old/*
+img/*

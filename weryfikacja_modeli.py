@@ -14,6 +14,8 @@ import os
 import glob
 from os.path import join
 from detekcja import predict
+from shutil import copyfile
+
 
 import argparse
 
@@ -27,15 +29,23 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ["CUDA_VISIBLE_DEVICES"]=args['gpu']
 
 def multiple_models():
-    dirpath = '/home/yason/workspace/ocr/img/val'
+    best_acc = 0
+    dirspath = ('img/val5',)
     for file in glob.glob('logs/*/*'):
         if file.split('/')[2] == 'best_weights.hdf5':
             print("----------------------------------")
             print(file.split('/')[1])
             test = predict()
+            test.collect_data(dirspath)
             test.load(file)
-            test.collect_data(dirpath)
             test.decode()
-            test.calculate_accuracy(False)
+            acc = test.calculate_accuracy(False)
+            if acc > best_acc:
+                best_model = file
+                best_acc = acc
+            keras.backend.clear_session()
+    print('najlepszy model dla danego zbioru: ' + best_model)
+    print('accuracy: ' + str(best_acc))
+    copyfile(best_model, 'best_weights.hdf5')
 
 multiple_models()
